@@ -17,7 +17,9 @@ class ShipmentAgent:
         self.gateway = gateway
         self.trace = trace
 
-    async def investigate(self, case_id: str, order_id: str) -> ShipmentEvidenceBundle:
+    async def investigate(
+        self, case_id: str, order_id: str, claim_topics: set[str] | None = None
+    ) -> ShipmentEvidenceBundle:
         bundle = ShipmentEvidenceBundle()
 
         try:
@@ -27,6 +29,7 @@ class ShipmentAgent:
             ev_ref = ship_res.get("evidence_ref")
             if ev_ref:
                 bundle.evidence_refs.append(ev_ref)
+                bundle.shipment_refs.append(ev_ref)
                 self.trace.emit(
                     case_id=case_id,
                     event_type="tool_result_consumed",

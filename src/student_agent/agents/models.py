@@ -11,6 +11,9 @@ class OrderEvidenceBundle:
     sellers: list[dict[str, Any]] = field(default_factory=list)
     products: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
+    order_refs: list[str] = field(default_factory=list)
+    item_refs: list[str] = field(default_factory=list)
+    seller_refs: list[str] = field(default_factory=list)
     order_ids: set[str] = field(default_factory=set)
     item_ids: set[str] = field(default_factory=set)
     seller_ids: set[str] = field(default_factory=set)
@@ -22,6 +25,9 @@ class PaymentEvidenceBundle:
     payment_timeline: dict[str, Any] | None = None
     refund_timeline: dict[str, Any] | None = None
     evidence_refs: list[str] = field(default_factory=list)
+    order_payment_refs: list[str] = field(default_factory=list)
+    timeline_refs: list[str] = field(default_factory=list)
+    refund_refs: list[str] = field(default_factory=list)
     payment_references: set[str] = field(default_factory=set)
 
 
@@ -30,6 +36,7 @@ class ShipmentEvidenceBundle:
     shipment: dict[str, Any] | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
     evidence_refs: list[str] = field(default_factory=list)
+    shipment_refs: list[str] = field(default_factory=list)
     shipment_ids: set[str] = field(default_factory=set)
 
 
@@ -37,3 +44,4 @@ class ShipmentEvidenceBundle:
 class PolicyEvidenceBundle:
     policy: dict[str, Any] = field(default_factory=dict)
     evidence_refs: list[str] = field(default_factory=list)
+

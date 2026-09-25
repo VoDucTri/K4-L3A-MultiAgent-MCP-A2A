@@ -17,9 +17,12 @@ class OrderAgent:
         self.gateway = gateway
         self.trace = trace
 
-    async def investigate(self, case_id: str, order_id: str) -> OrderEvidenceBundle:
+    async def investigate(
+        self, case_id: str, order_id: str, claim_topics: set[str] | None = None
+    ) -> OrderEvidenceBundle:
         bundle = OrderEvidenceBundle()
         bundle.order_ids.add(order_id)
+        topics = claim_topics or set()
 
         # 1. Retrieve authoritative order record
         try:
@@ -27,6 +30,7 @@ class OrderAgent:
             ev_ref = order_res.get("evidence_ref")
             if ev_ref:
                 bundle.evidence_refs.append(ev_ref)
+                bundle.order_refs.append(ev_ref)
                 self.trace.emit(
                     case_id=case_id,
                     event_type="tool_result_consumed",
@@ -46,6 +50,7 @@ class OrderAgent:
             ev_ref = items_res.get("evidence_ref")
             if ev_ref:
                 bundle.evidence_refs.append(ev_ref)
+                bundle.item_refs.append(ev_ref)
                 self.trace.emit(
                     case_id=case_id,
                     event_type="tool_result_consumed",
@@ -67,8 +72,8 @@ class OrderAgent:
         except Exception as exc:
             logger.warning("OrderAgent get_order_items failed for %s: %s", case_id, exc)
 
-        # 3. Retrieve authoritative seller details if sellers are associated
-        if bundle.seller_ids:
+        # 3. Retrieve authoritative seller details only if seller delay or dispute is claimed
+        if bundle.seller_ids and ("late_delivery_seller" in topics):
             try:
                 seller_res = await self.gateway.call(
                     "get_sellers", case_id=case_id, order_id=order_id
@@ -76,6 +81,7 @@ class OrderAgent:
                 ev_ref = seller_res.get("evidence_ref")
                 if ev_ref:
                     bundle.evidence_refs.append(ev_ref)
+                    bundle.seller_refs.append(ev_ref)
                     self.trace.emit(
                         case_id=case_id,
                         event_type="tool_result_consumed",

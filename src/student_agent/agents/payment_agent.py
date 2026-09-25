@@ -31,6 +31,7 @@ class PaymentAgent:
             ev_ref = pay_res.get("evidence_ref")
             if ev_ref:
                 bundle.evidence_refs.append(ev_ref)
+                bundle.order_payment_refs.append(ev_ref)
                 self.trace.emit(
                     case_id=case_id,
                     event_type="tool_result_consumed",
@@ -47,28 +48,31 @@ class PaymentAgent:
         except Exception as exc:
             logger.warning("PaymentAgent get_order_payments failed for %s: %s", case_id, exc)
 
-        # 2. Retrieve payment timeline
-        try:
-            tl_res = await self.gateway.call(
-                "get_payment_timeline", case_id=case_id, order_id=order_id
-            )
-            ev_ref = tl_res.get("evidence_ref")
-            if ev_ref:
-                bundle.evidence_refs.append(ev_ref)
-                self.trace.emit(
-                    case_id=case_id,
-                    event_type="tool_result_consumed",
-                    actor="payment-agent",
-                    tool_name="get_payment_timeline",
-                    evidence_refs=[ev_ref],
+        # 2. Retrieve payment timeline only for payment discrepancies or split payments
+        payment_dispute_topics = {"duplicate_charge", "payment_mismatch", "valid_split_payment"}
+        if topics.intersection(payment_dispute_topics):
+            try:
+                tl_res = await self.gateway.call(
+                    "get_payment_timeline", case_id=case_id, order_id=order_id
                 )
-            bundle.payment_timeline = tl_res.get("data")
-        except Exception as exc:
-            logger.debug("PaymentAgent get_payment_timeline failed for %s: %s", case_id, exc)
+                ev_ref = tl_res.get("evidence_ref")
+                if ev_ref:
+                    bundle.evidence_refs.append(ev_ref)
+                    bundle.timeline_refs.append(ev_ref)
+                    self.trace.emit(
+                        case_id=case_id,
+                        event_type="tool_result_consumed",
+                        actor="payment-agent",
+                        tool_name="get_payment_timeline",
+                        evidence_refs=[ev_ref],
+                    )
+                bundle.payment_timeline = tl_res.get("data")
+            except Exception as exc:
+                logger.debug("PaymentAgent get_payment_timeline failed for %s: %s", case_id, exc)
 
-        # 3. Retrieve refund timeline if relevant to claims
-        refund_related_topics = {"refund_pending", "refund_failed", "requested_full_refund"}
-        if topics.intersection(refund_related_topics):
+        # 3. Retrieve refund timeline only for explicit refund disputes
+        refund_dispute_topics = {"refund_pending", "refund_failed"}
+        if topics.intersection(refund_dispute_topics):
             try:
                 ref_res = await self.gateway.call(
                     "get_refund_timeline", case_id=case_id, order_id=order_id
@@ -76,6 +80,7 @@ class PaymentAgent:
                 ev_ref = ref_res.get("evidence_ref")
                 if ev_ref:
                     bundle.evidence_refs.append(ev_ref)
+                    bundle.refund_refs.append(ev_ref)
                     self.trace.emit(
                         case_id=case_id,
                         event_type="tool_result_consumed",

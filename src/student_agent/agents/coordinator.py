@@ -47,9 +47,9 @@ class CoordinatorRouter:
 
         # Step 2: Concurrently gather evidence across domains
         order_bundle, payment_bundle, shipment_bundle = await asyncio.gather(
-            order_agent.investigate(case_id, order_id),
+            order_agent.investigate(case_id, order_id, claim_topics),
             payment_agent.investigate(case_id, order_id, claim_topics),
-            shipment_agent.investigate(case_id, order_id),
+            shipment_agent.investigate(case_id, order_id, claim_topics),
         )
 
         # Step 3: Handoff evidence to Policy Agent
