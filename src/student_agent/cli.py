@@ -40,24 +40,52 @@ async def _run(root: Path) -> None:
     trace_path.unlink(missing_ok=True)
     trace = TraceWriter(trace_path, contracts)
 
-    async with connect_gateway(settings.mcp_endpoint, settings.team_api_key, contracts) as gateway:
-        discovered_tools = await gateway.list_tools()
-        if not discovered_tools:
-            raise RuntimeError("MCP Gateway returned no tools")
-        for case_id in case_set.case_ids:
-            case = case_set.cases[case_id]
-            trace.emit(case_id=case_id, event_type="case_received", actor="coordinator")
-            output = await solve_case(case, gateway, trace)
-            contracts.validate_output(output, f"outputs/{case_id}.json")
-            if output.get("case_id") != case_id:
-                raise ValueError(f"solver returned a mismatched case_id for {case_id}")
-            target = output_root / f"{case_id}.json"
-            temporary = target.with_suffix(".json.tmp")
-            temporary.write_text(
-                json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    pending_case_ids = list(case_set.case_ids)
+    max_retries = 3
+
+    while pending_case_ids:
+        try:
+            async with connect_gateway(settings.mcp_endpoint, settings.team_api_key, contracts) as gateway:
+                discovered_tools = await gateway.list_tools()
+                if not discovered_tools:
+                    raise RuntimeError("MCP Gateway returned no tools")
+                while pending_case_ids:
+                    case_id = pending_case_ids[0]
+                    case = case_set.cases[case_id]
+                    for attempt in range(max_retries):
+                        try:
+                            trace.remove_case_events(case_id)
+                            trace.emit(case_id=case_id, event_type="case_received", actor="coordinator")
+                            output = await solve_case(case, gateway, trace)
+                            contracts.validate_output(output, f"outputs/{case_id}.json")
+                            if output.get("case_id") != case_id:
+                                raise ValueError(f"solver returned a mismatched case_id for {case_id}")
+                            target = output_root / f"{case_id}.json"
+                            temporary = target.with_suffix(".json.tmp")
+                            temporary.write_text(
+                                json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                            )
+                            temporary.replace(target)
+                            trace.emit(case_id=case_id, event_type="case_finalized", actor="coordinator")
+                            pending_case_ids.pop(0)
+                            break
+                        except Exception as case_exc:
+                            if attempt == max_retries - 1:
+                                raise
+                            print(
+                                f"Warning: {case_id} failed attempt {attempt + 1}: {case_exc}, retrying...",
+                                file=sys.stderr,
+                            )
+                            await asyncio.sleep(1.0 * (attempt + 1))
+        except Exception as conn_exc:
+            if not pending_case_ids:
+                break
+            print(
+                f"Connection dropped ({conn_exc}), reconnecting gateway in 2s...",
+                file=sys.stderr,
             )
-            temporary.replace(target)
-            trace.emit(case_id=case_id, event_type="case_finalized", actor="coordinator")
+            await asyncio.sleep(2.0)
+
 
 
 def parser() -> argparse.ArgumentParser:
@@ -94,7 +122,10 @@ def main() -> None:
             print(f"OK: {len(case_set.case_ids)} outputs / {len(trace)} trace events")
         elif args.command == "package":
             destination = package_submission(root, root / args.output)
-            print(f"OK: {destination}")
+            try:
+                print(f"OK: {destination}")
+            except UnicodeEncodeError:
+                print(f"OK: {destination.as_posix().encode('ascii', 'replace').decode('ascii')}")
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

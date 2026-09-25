@@ -49,3 +49,12 @@ class TraceWriter:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
         return event
+
+    def remove_case_events(self, case_id: str) -> None:
+        if not self.path.exists():
+            return
+        lines = self.path.read_text(encoding="utf-8").splitlines()
+        filtered = [l for l in lines if f'"case_id":"{case_id}"' not in l and l.strip()]
+        content = "\n".join(filtered) + ("\n" if filtered else "")
+        self.path.write_text(content, encoding="utf-8")
+
